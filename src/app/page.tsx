@@ -1,101 +1,117 @@
-import Image from "next/image";
+'use client';
+
+import { useState } from 'react';
+import { load as yamlLoad, dump as yamlDump } from 'js-yaml';
+import { FileUpload } from '@/components/FileUpload';
+import { FunctionList } from '@/components/FunctionList';
+import { OpenAPIEditor } from '@/lib/OpenAPIEditor';
+import { OpenAPIDocument } from '@/lib/types/OpenAPITypes';
+
+const downloadYaml = (content: string, filename: string) => {
+  const blob = new Blob([content], { type: 'text/yaml' });
+  const url = window.URL.createObjectURL(blob);
+  const link = window.document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.URL.revokeObjectURL(url);
+};
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [document, setDocument] = useState<OpenAPIDocument | null>(null);
+  const [editor, setEditor] = useState<OpenAPIEditor | null>(null);
+  const [selectedOperations, setSelectedOperations] = useState<Set<string>>(new Set());
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const handleFileLoad = (content: string) => {
+    try {
+      const doc = yamlLoad(content) as OpenAPIDocument;
+      setDocument(doc);
+      setEditor(new OpenAPIEditor(doc));
+    } catch (error) {
+      alert('Error loading YAML file: ' + (error as Error).message);
+    }
+  };
+
+  const handleDelete = (operationId: string) => {
+    if (editor) {
+      editor.deleteFunction(operationId);
+      setDocument({ ...editor.getDocument() });
+      setSelectedOperations(prev => {
+        const next = new Set(prev);
+        next.delete(operationId);
+        return next;
+      });
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    if (editor && selectedOperations.size > 0) {
+      selectedOperations.forEach(operationId => {
+        editor.deleteFunction(operationId);
+      });
+      setDocument({ ...editor.getDocument() });
+      setSelectedOperations(new Set());
+    }
+  };
+
+  const handleToggleSelect = (operationId: string) => {
+    setSelectedOperations(prev => {
+      const next = new Set(prev);
+      if (next.has(operationId)) {
+        next.delete(operationId);
+      } else {
+        next.add(operationId);
+      }
+      return next;
+    });
+  };
+
+  const handleSave = () => {
+    if (editor) {
+      const updatedYaml = yamlDump(editor.getDocument(), {
+        indent: 2,
+        lineWidth: -1,
+        noRefs: true
+      });
+      downloadYaml(updatedYaml, 'openapi.updated.yaml');
+    }
+  };
+
+  return (
+    <main className="container mx-auto px-4 py-8 max-w-4xl">
+      <h1 className="text-3xl font-bold mb-8">OpenAPI Editor</h1>
+      
+      <div className="mb-8">
+        <FileUpload onFileLoad={handleFileLoad} />
+      </div>
+
+      {document && (
+        <div>
+          <h2 className="text-xl font-semibold mb-4">Functions</h2>
+          <FunctionList
+            paths={document.paths}
+            onDelete={handleDelete}
+            selectedOperations={selectedOperations}
+            onToggleSelect={handleToggleSelect}
+          />
+          <div className="mt-4 space-x-4">
+            {selectedOperations.size > 0 && (
+              <button 
+                onClick={handleDeleteSelected}
+                className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+              >
+                Delete Selected ({selectedOperations.size})
+              </button>
+            )}
+            <button 
+              onClick={handleSave}
+              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+            >
+              Save Changes
+            </button>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      )}
+    </main>
   );
-}
+} 
